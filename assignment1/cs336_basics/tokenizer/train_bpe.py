@@ -6,6 +6,12 @@ def count_words(
     pretokens : list[str],
     word_counts : Counter 
 ) -> None:
+    """
+    Convert each pre-token to a tuple of single-byte units and increment its frequency.
+
+    Notes:
+      - Modifies word_counts in place; returns None.
+    """
     for pt in pretokens:
         if not pt:
             continue
@@ -18,6 +24,12 @@ def count_pairs(
     pair_counts : Counter,
     pair_to_words : dict[tuple[bytes, bytes], set[tuple[bytes, ...]]]
 ) -> None:
+    """
+    Count weighted frequencies of adjacent pairs and build the reverse index.
+
+    Notes:
+      - Modifies pair_counts and pair_to_words in place; returns None.
+    """
     for word, freq in word_counts.items():
         if freq == 0:
             continue
@@ -31,7 +43,11 @@ def upgrade_counts(
     pair_counts : Counter,
     pair_to_words : dict[tuple[bytes, bytes], set[tuple[bytes, ...]]]
 ) -> None:
+    """Merge merged_pair into a single unit in every word containing it, updating all three tables.
 
+    Notes:
+      - Modifies all three tables in place; returns None.
+    """
     p_left, p_right = merged_pair
     merged = p_left + p_right
 
@@ -77,6 +93,12 @@ def merge(
     pair_counts : Counter,
     pair_to_words : dict[tuple[bytes, bytes], set[tuple[bytes, ...]]]
 ) -> tuple[bytes, bytes] | None:
+    """
+    Pick the most frequent pair (lexicographically largest on ties), merge it, and return it.
+
+    Notes:
+      - Returns None when no mergeable pairs left.
+    """
     if not pair_counts:
         return None
 
@@ -91,6 +113,12 @@ def train_bpe(
     vocab_size : int,
     special_tokens : list[str]
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+    """
+    Train byte-level BPE on a file and return (vocab, merges).
+
+    Notes:
+      - vocab_size counts the 256 base bytes, special tokens, and all merge results.
+    """
     vocab = {i : bytes([i]) for i in range(256)}
     next_id = 256
 

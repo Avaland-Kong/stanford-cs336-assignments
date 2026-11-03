@@ -2,12 +2,22 @@ from typing import Iterable, Iterator
 from .pretokenize import pre_tokenize, segment_by_special_tokens
 
 class Tokenizer:
+    """
+    Byte-level BPE tokenizer: text ↔ token ids.
+    """
     def __init__(
         self,
         vocab : dict[int, bytes],
         merges : list[tuple[bytes, bytes]],
         special_tokens : list[str] | None = None
     ) -> None:
+        """
+        Store vocab/merges/special_tokens and build derived tables for encode/decode.
+
+        Notes:
+          - Special tokens not already in vocab are appended at the end, in order.
+          - Assumes vocab ids are contiguous 0..len(vocab)-1 with no holes;
+        """
         self.vocab = vocab.copy()
         self.merges = merges
         self.special_tokens = special_tokens
@@ -30,6 +40,12 @@ class Tokenizer:
         self,
         word : tuple[bytes, ...]
     ) -> tuple[bytes, ...]:
+        """
+        Repeatedly merge the lowest-rank adjacent pair until none can be merged.
+
+        Notes:
+          - Ranks come from the training-time merge order; smaller means higher priority.
+        """
         while len(word) > 1:
             lowest_rank = float('inf')
             merge_loc = -1
@@ -59,6 +75,12 @@ class Tokenizer:
         self,
         text : str
     ) -> list[int]:
+        """
+        Encode text into a list of token ids.
+
+        Notes:
+          - Special tokens map directly to ids, bypassing pre-tokenization and BPE.
+        """
         result = []
         for start, end, is_special_token in segment_by_special_tokens(text, self.special_tokens):
             if is_special_token:
@@ -79,6 +101,12 @@ class Tokenizer:
         self,
         ids : list[int]
     ) -> str:
+        """
+        Decode a list of token ids back into text.
+
+        Notes:
+          - errors="replace" substitutes invalid byte sequences with U+FFFD instead of raising.
+        """
         return b''.join(self.vocab[token_id] for token_id in ids).decode("utf-8", errors="replace")
 
     def encode_iterable(
