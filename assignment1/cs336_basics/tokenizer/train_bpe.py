@@ -1,6 +1,17 @@
+import multiprocessing as mp
+from collections import Counter
+import queue
+
+
 from cs336_basics.pretokenization_example import find_chunk_boundaries
 from .pretokenize import segment_by_special_tokens, pre_tokenize
-from collections import Counter
+
+
+_SENTINEL = "___DONE___"
+_CHUNK_NUM = 128
+_WORKER_NUM = 8
+_SINGLE_BYTES = tuple(bytes([i]) for i in range(256))
+
 
 def count_words(
     pretokens : list[str],
@@ -16,7 +27,7 @@ def count_words(
         if not pt:
             continue
         pt_bytes = pt.encode("utf-8")
-        word = tuple(bytes([x]) for x in pt_bytes)
+        word = tuple(_SINGLE_BYTES[x] for x in pt_bytes)
         word_counts[word] += 1
 
 def count_pairs(
@@ -108,6 +119,38 @@ def merge(
 
     return merged_pair
 
+def _count_worker(
+    task_q, 
+    result_q, 
+    special_tokens : list[str]
+) -> None:
+    """
+    Consume chunk tasks from task_q, compute local word_counts, and put them into result_q.
+    
+    Notes:
+      - Loops until it receives the sentinel, then puts the sentinel into result_q and returns.
+    """
+    while True:
+        task = task_q.get()
+        if task == _SENTINEL:
+            result_q.put(_SENTINEL)
+            break
+
+        input_path, start, end= task 
+        word_counts = Counter()
+        
+        with open(input_path, "rb") as f:
+            f.seek(start)
+            chunk = f.read(end - start).decode("utf-8", errors="ignore")
+            for s, e, is_special_token in segment_by_special_tokens(chunk, special_tokens):
+                if is_special_token:
+                    continue
+                count_words(pre_tokenize(chunk[s : e]), word_counts)        
+
+        result_q.put(word_counts)
+
+
+
 def train_bpe(
     input_path : str,
     vocab_size : int,
@@ -130,18 +173,60 @@ def train_bpe(
     pair_counts = Counter()
     pair_to_words = {}
 
-    
-
+    # Parallelize pre-token frequency counting
+    split_special_token = special_tokens[0].encode("utf-8") if special_tokens else b'<|endoftext|>'
     with open(input_path, "rb") as f:
-        chunk_boundaries = find_chunk_boundaries(f, 1, b"<|endoftext|>")
-        for start, end in zip(chunk_boundaries[:-1], chunk_boundaries[1:]):
-            f.seek(start)
-            chunk = f.read(end - start).decode("utf-8", errors="ignore")
+        chunk_boundaries = find_chunk_boundaries(f, _CHUNK_NUM, split_special_token)
+    
+    count_task_q = mp.Queue()
+    count_result_q = mp.Queue()
+    
+    count_workers = [mp.Process(target=_count_worker, args=(count_task_q, count_result_q, special_tokens)) for _ in range(_WORKER_NUM)]
+    try:
+        for worker in count_workers:
+            try:
+                worker.start()
+            except Exception as e:
+                raise RuntimeError(
+                    f"Count_worker start failed: {e}"
+                )
 
-            for s, e, is_special_token in segment_by_special_tokens(chunk, special_tokens):
-                if is_special_token:
-                    continue
-                count_words(pre_tokenize(chunk[s : e]), word_counts)
+
+        for start, end in zip(chunk_boundaries[:-1], chunk_boundaries[1:]):
+            count_task_q.put((input_path, start, end))
+        
+        for _ in range(_WORKER_NUM):
+            count_task_q.put(_SENTINEL)
+
+        done_count = 0
+        while done_count < _WORKER_NUM:
+            try:
+                result = count_result_q.get(timeout=1)
+            except queue.Empty:
+                for worker in count_workers:
+                    if worker.exitcode is not None and worker.exitcode != 0:
+                        raise RuntimeError(
+                            f"Count_worker crashed: {worker.exitcode}"
+                        )
+                continue
+                
+            if result == _SENTINEL:
+                done_count += 1
+                continue
+            
+            word_counts += result
+        
+        for worker in count_workers:
+            worker.join()
+    except Exception as e:
+        for w in count_workers:
+            if w.is_alive():
+                w.terminate() 
+        for w in count_workers:
+            if w.pid is not None:
+                w.join()
+        raise
+
 
     count_pairs(word_counts, pair_counts, pair_to_words)
 
