@@ -44,7 +44,7 @@ if __name__ == "__main__":
     sampler.start()
 
     start_time = time.perf_counter()
-    vocab, merges = train_bpe("data/raw_text/owt_valid.txt", 10000, special_tokens, _CHUNK_NUM, _WORKER_NUM)
+    vocab, merges = train_bpe("data/raw_text/owt_train.txt", 32000, special_tokens, _CHUNK_NUM, _WORKER_NUM)
     elapsed_time = time.perf_counter() - start_time
 
     _stop_sampling.set()
