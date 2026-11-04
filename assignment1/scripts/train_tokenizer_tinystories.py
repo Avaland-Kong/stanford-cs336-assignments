@@ -9,6 +9,9 @@ import os
 from cs336_basics.tokenizer.tokenizer import Tokenizer
 from cs336_basics.tokenizer.train_bpe import train_bpe
 
+
+_CHUNK_NUM = 256
+_WORKER_NUM = 8
 _peak_tree_rss_mb = 0.0
 _stop_sampling = threading.Event()
 
@@ -41,7 +44,7 @@ if __name__ == "__main__":
     sampler.start()
 
     start_time = time.perf_counter()
-    vocab, merges = train_bpe("data/raw_text/TinyStoriesV2-GPT4-train.txt", 10000, special_tokens)
+    vocab, merges = train_bpe("data/raw_text/TinyStoriesV2-GPT4-train.txt", 10000, special_tokens, _CHUNK_NUM, _WORKER_NUM)
     elapsed_time = time.perf_counter() - start_time
 
     _stop_sampling.set()

@@ -8,8 +8,6 @@ from .pretokenize import segment_by_special_tokens, pre_tokenize
 
 
 _SENTINEL = "___DONE___"
-_CHUNK_NUM = 256
-_WORKER_NUM = 8
 _SINGLE_BYTES = tuple(bytes([i]) for i in range(256))
 
 
@@ -154,7 +152,9 @@ def _count_worker(
 def train_bpe(
     input_path : str,
     vocab_size : int,
-    special_tokens : list[str]
+    special_tokens : list[str],
+    chunk_num : int = 256,
+    worker_num : int = 8
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """
     Train byte-level BPE on a file and return (vocab, merges).
@@ -176,12 +176,12 @@ def train_bpe(
     # Parallelize pre-token frequency counting
     split_special_token = special_tokens[0].encode("utf-8") if special_tokens else b'<|endoftext|>'
     with open(input_path, "rb") as f:
-        chunk_boundaries = find_chunk_boundaries(f, _CHUNK_NUM, split_special_token)
+        chunk_boundaries = find_chunk_boundaries(f, chunk_num, split_special_token)
     
     count_task_q = mp.Queue()
     count_result_q = mp.Queue()
     
-    count_workers = [mp.Process(target=_count_worker, args=(count_task_q, count_result_q, special_tokens)) for _ in range(_WORKER_NUM)]
+    count_workers = [mp.Process(target=_count_worker, args=(count_task_q, count_result_q, special_tokens)) for _ in range(worker_num)]
     try:
         for worker in count_workers:
             try:
@@ -195,11 +195,11 @@ def train_bpe(
         for start, end in zip(chunk_boundaries[:-1], chunk_boundaries[1:]):
             count_task_q.put((input_path, start, end))
         
-        for _ in range(_WORKER_NUM):
+        for _ in range(worker_num):
             count_task_q.put(_SENTINEL)
 
         done_count = 0
-        while done_count < _WORKER_NUM:
+        while done_count < worker_num:
             try:
                 result = count_result_q.get(timeout=1)
             except queue.Empty:
