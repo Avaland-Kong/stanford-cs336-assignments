@@ -1,4 +1,5 @@
-from typing import Iterable, Iterator
+import pickle
+from typing import Iterable, Iterator, Self
 from .pretokenize import pre_tokenize, segment_by_special_tokens
 
 class Tokenizer:
@@ -34,7 +35,27 @@ class Tokenizer:
                 self.vocab[next_id] = token_bytes
                 self._bytes_to_id[token_bytes] = next_id
                 next_id += 1
+    
+    @classmethod
+    def from_files(
+        cls,
+        vocab_filepath : str,
+        merges_filepath : str,
+        special_tokens : list[str] | None = None
+    ) -> Self:
+        """
+        Construct a Tokenizer by loading vocab and merges from pickled files.
 
+        Notes:
+          - vocab_filepath holds dict[int, bytes]
+          - merges_filepath holds list[tuple[bytes, bytes]].
+        """
+        with open(vocab_filepath, "rb") as f:
+            vocab = pickle.load(f)
+        with open(merges_filepath, "rb") as f:
+            merges = pickle.load(f)
+
+        return cls(vocab, merges, special_tokens)
 
     def _encode_merge_loop(
         self,

@@ -8,7 +8,7 @@ from .pretokenize import segment_by_special_tokens, pre_tokenize
 
 
 _SENTINEL = "___DONE___"
-_CHUNK_NUM = 128
+_CHUNK_NUM = 256
 _WORKER_NUM = 8
 _SINGLE_BYTES = tuple(bytes([i]) for i in range(256))
 
